@@ -449,10 +449,12 @@ fn sanitize_log_field(s: &str) -> String {
 }
 
 fn audit_log_inner(action: &str, original: &str, rewritten: &str) -> Option<()> {
-    let home = dirs::home_dir()?;
-    let dir = home.join(".local").join("share").join("rtk");
-    crate::core::utils::create_private_dir(&dir).ok()?;
-    let path = dir.join("hook-audit.log");
+    // Path resolution lives in `audit_log` so Windows and the RTK_AUDIT_DIR
+    // override agree on one location; the directory and file are still created
+    // owner-only, per the upstream hardening in #3356.
+    let path = super::audit_log::path();
+    let dir = path.parent()?;
+    crate::core::utils::create_private_dir(dir).ok()?;
     let mut file = crate::core::utils::open_private(
         std::fs::OpenOptions::new().create(true).append(true),
         &path,
