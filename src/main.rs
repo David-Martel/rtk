@@ -311,11 +311,11 @@ enum Commands {
 
     /// Compact grep - strips whitespace, truncates, groups by file
     Grep {
-        /// Max line length
-        #[arg(short = 'l', long, default_value = "80")]
+        /// Max line length (long form only -- `-l` is grep's --files-with-matches)
+        #[arg(long, default_value = "80")]
         max_len: usize,
-        /// Max results to show
-        #[arg(short, long, default_value = "200")]
+        /// Max results to show (long form only -- `-m` is grep's --max-count)
+        #[arg(long, default_value = "200")]
         max: usize,
         /// Show only match context (not full line)
         #[arg(long)]
@@ -3616,6 +3616,54 @@ mod tests {
                 assert!(global);
             }
             _ => panic!("Expected Init command"),
+        }
+    }
+
+    /// Regression: rtk's own `-l` / `-m` short flags must not shadow the
+    /// POSIX grep / ripgrep flags of the same name.
+    ///
+    /// `grep -l` is `--files-with-matches` and `grep -m` is `--max-count`;
+    /// both are decades-old, universally used spellings. rtk bound `-l` to
+    /// `--max-len` and `-m` to `--max`, which take a VALUE. When the search
+    /// pattern is numeric the value parses, the flag silently swallows the
+    /// pattern, and the next argument (the FILE) is reparsed as the pattern.
+    ///
+    /// Measured before the fix:
+    ///   grep     -l 8400 sub/port.txt -> "sub/port.txt", exit 0  (match)
+    ///   rtk grep -l 8400 sub/port.txt -> "0 matches ...",  exit 1  (NO match)
+    ///
+    /// A found match becomes "not found" with a success-shaped exit code, so a
+    /// caller cannot distinguish a real negative from a mangled one. Numeric
+    /// patterns are common (ports, years, error codes, PIDs), so this is not a
+    /// corner case.
+    #[test]
+    fn test_grep_short_flags_do_not_shadow_posix_grep() {
+        for flag in ["-l", "-m"] {
+            // If parsing fails, run_fallback() re-runs the real grep -> correct.
+            // If it succeeds, the numeric pattern must NOT have been eaten.
+            if let Ok(cli) = Cli::try_parse_from(["rtk", "grep", flag, "8400", "sub/port.txt"]) {
+                if let Commands::Grep {
+                    max_len,
+                    max,
+                    ref extra_args,
+                    ..
+                } = cli.command
+                {
+                    assert_ne!(
+                        max_len, 8400,
+                        "{flag} must not bind the search pattern to --max-len"
+                    );
+                    assert_ne!(
+                        max, 8400,
+                        "{flag} must not bind the search pattern to --max"
+                    );
+                    assert!(
+                        extra_args.iter().any(|a| a == "8400"),
+                        "{flag}: search pattern 8400 was swallowed; \
+                         extra_args={extra_args:?}"
+                    );
+                }
+            }
         }
     }
 }
