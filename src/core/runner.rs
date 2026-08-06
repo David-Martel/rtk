@@ -147,6 +147,21 @@ where
         guarded
     };
 
+    // With `filter_stdout_only`, everything above -- the filtered text AND the
+    // never-worse guard's reference -- is stdout only. stderr was captured into
+    // `result.raw_stderr` and, on a SUCCESSFUL run, read nowhere: the only
+    // other reader is the `exit_code != 0` branch above. So a warning on a
+    // green run vanished entirely, and neither safety net could catch it --
+    // `guard::never_worse` compares token counts rather than content, and tee
+    // defaults to `TeeMode::Failures`, which skips exit 0 and so leaves no
+    // recovery file. Emit it verbatim on our own stderr, after stdout, which is
+    // the ordering the failure branch already uses. Verbatim rather than
+    // filtered: stderr is what was being lost, and compacting it here would
+    // reintroduce the same class of loss.
+    if opts.filter_stdout_only && !result.raw_stderr.trim().is_empty() {
+        eprint!("{}", result.raw_stderr);
+    }
+
     timer.track(
         cmd_label,
         &format!("rtk {}", cmd_label),

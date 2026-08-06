@@ -66,8 +66,8 @@ All execution goes through `core::stream::run_streaming()` with one of four `Fil
 
 | FilterMode | How it works | Used by |
 |------------|-------------|---------|
-| **`CaptureOnly`** | Buffers all stdout silently, then passes the full string to `filter_fn` post-hoc. Stderr streams to terminal in real time. | `run_filtered()` (default path) |
-| **`Buffered`** | Buffers all stdout, applies filter, then prints the result. Stderr streams live. Chosen automatically by `run_filtered()` when `filter_stdout_only` is set. | `run_filtered()` (stdout-only path) |
+| **`CaptureOnly`** | Buffers all stdout silently, then passes the full string to `filter_fn` post-hoc. Stderr is **also buffered**, not streamed — it is merged into `raw` and reaches the filter with stdout. | `run_filtered()` (default path) |
+| **`Buffered`** | Buffers all stdout, applies filter, then prints the result. Stderr is **buffered separately** into `raw_stderr` and is **not** passed to the filter; the runner re-emits it verbatim on rtk's stderr after the filtered stdout. Chosen automatically by `run_filtered()` when `filter_stdout_only` is set. | `run_filtered()` (stdout-only path) |
 | **`Streaming`** | Feeds each stdout line to a `StreamFilter::feed_line()` as it arrives. Emitted lines print immediately. Calls `flush()` after process exits for final output. | `run_streamed()` |
 | **`Passthrough`** | Inherits the parent TTY directly — no piping, no buffering. `raw`/`filtered` are empty. | `run_passthrough()` |
 
