@@ -80,8 +80,16 @@ fn binary_hook_registered(claude_dir: &std::path::Path) -> bool {
         .iter()
         .filter_map(|entry| entry.get("hooks")?.as_array())
         .flatten()
-        .filter_map(|hook| hook.get("command")?.as_str())
-        .any(is_claude_hook_command)
+        .any(|hook| {
+            hook.get("command")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(is_claude_hook_command)
+                || hook
+                    .get("env")
+                    .and_then(|env| env.get("RTK_HOOK_COMPOSITE"))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|value| value == "1")
+        })
 }
 
 /// Check if the installed hook is missing or outdated, warn once per day.
@@ -231,6 +239,53 @@ mod tests {
         .expect("write settings");
 
         assert!(binary_hook_registered(tmp.path()));
+    }
+
+    #[test]
+    fn test_binary_hook_registered_accepts_explicit_composite_marker() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join(SETTINGS_JSON),
+            r#"{
+                "hooks": {
+                    "PreToolUse": [{
+                        "matcher": "Bash",
+                        "hooks": [{
+                            "type": "command",
+                            "command": "pwsh -File pre-tool-use-chain.ps1",
+                            "env": {
+                                "RTK_HOOK_COMPOSITE": "1"
+                            }
+                        }]
+                    }]
+                }
+            }"#,
+        )
+        .expect("write settings");
+
+        assert!(binary_hook_registered(tmp.path()));
+    }
+
+    #[test]
+    fn test_binary_hook_registered_rejects_unmarked_wrapper() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join(SETTINGS_JSON),
+            r#"{
+                "hooks": {
+                    "PreToolUse": [{
+                        "matcher": "Bash",
+                        "hooks": [{
+                            "type": "command",
+                            "command": "pwsh -File pre-tool-use-chain.ps1"
+                        }]
+                    }]
+                }
+            }"#,
+        )
+        .expect("write settings");
+
+        assert!(!binary_hook_registered(tmp.path()));
     }
 
     #[test]
