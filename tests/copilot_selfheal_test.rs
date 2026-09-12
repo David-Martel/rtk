@@ -91,6 +91,8 @@ impl Sandbox {
             .args(["hook", "copilot"])
             .current_dir(&self.project)
             .env("HOME", &self.home)
+            .env("RTK_CONFIG_DIR", self.home.join(".config/rtk"))
+            .env("RTK_AUDIT_DIR", self.home.join("audit"))
             .env("COPILOT_HOME", &self.copilot_home)
             .env("LC_ALL", "C")
             .stdin(Stdio::piped())
@@ -134,6 +136,27 @@ fn assert_hook_ok(payload: &str, stdout: &str, stderr: &str, code: Option<i32>) 
 }
 
 // ── Heal correctness ─────────────────────────────────────────
+
+#[test]
+fn isolated_config_exclusions_are_respected_during_heal() {
+    let sb = Sandbox::new();
+    sb.write_project(LEGACY_STOCK);
+    let config_dir = sb.home.join(".config/rtk");
+    std::fs::create_dir_all(&config_dir).expect("mkdir RTK config");
+    std::fs::write(
+        config_dir.join("config.toml"),
+        "[hooks]\nexclude_commands = [\"git\"]\n",
+    )
+    .expect("write excluded command config");
+
+    let (stdout, stderr, code) = sb.run_hook(LEGACY_PAYLOAD);
+    assert_hook_ok(LEGACY_PAYLOAD, &stdout, &stderr, code);
+    assert!(
+        stdout.trim().is_empty(),
+        "excluded command was rewritten: {stdout}"
+    );
+    assert_eq!(read(&sb.project_config()), CURRENT_STOCK);
+}
 
 #[test]
 fn legacy_invocation_heals_project_and_global_to_current_stock() {
