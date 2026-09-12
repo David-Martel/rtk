@@ -323,14 +323,16 @@ fn engine_command<T: AsRef<str>>(
         // The engine writes through a pipe, so flush each match immediately.
         cmd.arg("--line-buffered");
     }
-    if patterns.len() == 1 {
-        cmd.arg(&patterns[0]);
+    if patterns.len() == 1 && matches!(engine, Engine::Grep) {
+        // Keep single-pattern Windows grep shims compatible without treating
+        // a dash-leading pattern as an option.
+        cmd.arg("--").arg(&patterns[0]);
     } else {
         for p in patterns {
             cmd.args(["-e", p]);
         }
+        cmd.arg("--");
     }
-    cmd.arg("--");
     cmd.args(paths);
     cmd
 }
@@ -861,6 +863,35 @@ fn compact_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_engine_command_protects_dash_pattern_for_rg() {
+        let command = engine_command(
+            Engine::Rg,
+            &[] as &[&str],
+            &["-needle".into()],
+            &["-file.txt".into()],
+            false,
+        );
+        let args: Vec<_> = command.get_args().map(|arg| arg.to_string_lossy()).collect();
+        assert_eq!(
+            args,
+            ["-n", "--with-filename", "--null", "-e", "-needle", "--", "-file.txt"]
+        );
+    }
+
+    #[test]
+    fn test_engine_command_protects_dash_pattern_for_grep() {
+        let command = engine_command(
+            Engine::Grep,
+            &[] as &[&str],
+            &["-needle".into()],
+            &["-file.txt".into()],
+            false,
+        );
+        let args: Vec<_> = command.get_args().map(|arg| arg.to_string_lossy()).collect();
+        assert_eq!(args, ["-n", "-H", "-Z", "--", "-needle", "-file.txt"]);
+    }
 
     #[test]
     fn test_clean_line() {

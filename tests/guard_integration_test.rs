@@ -3,8 +3,34 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+fn fixture_command(program: &str, dir: &std::path::Path) -> Command {
+    let mut command = Command::new(program);
+    // Test repositories must not load the developer's hooks, signing policy,
+    // relative dates, RTK filters, or shared tracking stores.
+    command
+        .current_dir(dir)
+        .env("HOME", dir)
+        .env("USERPROFILE", dir)
+        .env("XDG_CONFIG_HOME", dir.join(".config"))
+        .env("GIT_CONFIG_GLOBAL", dir.join("absent-global.gitconfig"))
+        .env("GIT_CONFIG_SYSTEM", dir.join("absent-system.gitconfig"))
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("RTK_CONFIG_DIR", dir.join(".git/rtk-config"))
+        .env("RTK_DB_PATH", dir.join(".git/rtk.db"))
+        .env("RTK_AUDIT_DIR", dir.join(".git/rtk-audit"))
+        .env("RTK_TEE_DIR", dir.join(".git/rtk-tee"))
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .env_remove("GIT_CONFIG")
+        .env_remove("GIT_CONFIG_COUNT")
+        .env_remove("GIT_CONFIG_PARAMETERS");
+    command
+}
+
 fn rtk_stdin(args: &[&str], input: &str) -> String {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_rtk"))
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut child = fixture_command(env!("CARGO_BIN_EXE_rtk"), dir.path())
         .env("LC_ALL", "C")
         .args(args)
         .stdin(Stdio::piped())
@@ -58,7 +84,7 @@ fn guard_does_not_block_real_compression() {
 }
 
 fn rtk_output_in_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, Option<i32>) {
-    let out = Command::new(env!("CARGO_BIN_EXE_rtk"))
+    let out = fixture_command(env!("CARGO_BIN_EXE_rtk"), dir)
         .env("LC_ALL", "C")
         .args(args)
         .current_dir(dir)
@@ -90,9 +116,12 @@ fn init_git_repo() -> tempfile::TempDir {
         &["init", "-q", "-b", "main"][..],
         &["config", "user.email", "t@t.t"][..],
         &["config", "user.name", "t"][..],
+        // Relative dates from a developer's Git config change between the raw
+        // and wrapped invocations, invalidating byte-for-byte comparisons.
+        &["config", "log.date", "iso-strict"][..],
         &["commit", "-q", "--allow-empty", "-m", "init"][..],
     ] {
-        let ok = Command::new("git")
+        let ok = fixture_command("git", dir.path())
             .args(args)
             .current_dir(dir.path())
             .output()
@@ -104,7 +133,7 @@ fn init_git_repo() -> tempfile::TempDir {
 }
 
 fn git_in_dir(dir: &std::path::Path, args: &[&str]) {
-    let out = Command::new("git")
+    let out = fixture_command("git", dir)
         .args(args)
         .current_dir(dir)
         .output()
@@ -163,6 +192,58 @@ fn git_stash_list_no_stashes_emits_empty() {
         "no-stashes must emit empty, not 'No stashes': {out:?}"
     );
     assert_eq!(code, Some(0));
+}
+
+#[test]
+fn git_log_patch_output_matches_raw_git() {
+    let dir = init_git_repo();
+    std::fs::write(
+        dir.path().join("history.txt"),
+        "STRIPE_KEY=sk_live_FAKE1234567890\n",
+    )
+    .expect("write history fixture");
+    git_in_dir(dir.path(), &["add", "history.txt"]);
+    git_in_dir(dir.path(), &["commit", "-q", "-m", "add history fixture"]);
+
+    let raw = fixture_command("git", dir.path())
+        .args(["log", "-p", "--all"])
+        .current_dir(dir.path())
+        .output()
+        .expect("spawn raw git log");
+    assert!(raw.status.success());
+
+    let (rtk_stdout, rtk_stderr, rtk_code) =
+        rtk_output_in_dir(dir.path(), &["git", "log", "-p", "--all"]);
+
+    assert_eq!(rtk_code, Some(0), "rtk stderr: {rtk_stderr}");
+    assert_eq!(rtk_stdout.as_bytes(), raw.stdout.as_slice());
+    assert!(rtk_stdout.contains("STRIPE_KEY=sk_live_FAKE1234567890"));
+}
+
+#[test]
+fn git_log_dash_p_pathspec_after_double_dash_is_not_patch_flag() {
+    // Regression: `rtk git log -- -p` must not be misread as the real `-p`
+    // patch flag. Clap's `trailing_var_arg` strips the literal "--" before
+    // `run_log` sees `args`, so the pathspec-separator check must restore it
+    // (via restore_double_dash) before deciding whether to pass through raw
+    // patch output; otherwise a file literally named "-p" after "--" is
+    // wrongly treated as a request for `git log -p`.
+    let dir = init_git_repo();
+    std::fs::write(dir.path().join("-p"), "not a diff flag\n").expect("write -p file");
+    git_in_dir(dir.path(), &["add", "--", "-p"]);
+    git_in_dir(dir.path(), &["commit", "-q", "-m", "add dash-p file"]);
+
+    let (stdout, stderr, code) = rtk_output_in_dir(dir.path(), &["git", "log", "--", "-p"]);
+
+    assert_eq!(code, Some(0), "rtk stderr: {stderr}");
+    assert!(
+        !stdout.contains("diff --git") && !stdout.contains("@@"),
+        "-- -p should stay on RTK's filtered path, not raw patch output: {stdout:?}"
+    );
+    assert!(
+        stdout.contains("add dash-p file"),
+        "expected the commit touching the -p pathspec: {stdout:?}"
+    );
 }
 
 #[test]

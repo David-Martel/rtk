@@ -117,8 +117,6 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit 1
 fi
 
-REPO_ROOT=$(git rev-parse --show-toplevel)
-
 # ── 1. Version & Help ───────────────────────────────
 
 section "Version & Help"
@@ -257,9 +255,20 @@ fi
 
 section "Grep"
 
-assert_ok      "rtk grep pattern"             rtk grep "pub fn" src/
-assert_contains "rtk grep finds results"      "pub fn" rtk grep "pub fn" src/
-assert_ok      "rtk grep with file type"      rtk grep "pub fn" src/ -t rust
+# All three need -r: `grep PATTERN <dir>` without it exits 2 ("Is a directory"),
+# which made the first two assertions red and the third one inert.
+assert_ok      "rtk grep pattern"             rtk grep -r "pub fn" src/
+assert_contains "rtk grep finds results"      "pub fn" rtk grep -r "pub fn" src/
+# `-t` is rg-only. The form matters: the pattern must match, the path must be a
+# single file, and `-t` must come first, so the only reason to fail is `-t`
+# itself -- a directory, a non-matching pattern, or `-t` after another flag all
+# make this assertion pass either way.
+assert_fails   "rtk grep -t rejected by grep"  rtk grep -t rust "fn main" src/main.rs
+if command -v rg >/dev/null 2>&1; then
+    assert_ok  "rtk rg with file type"         rtk rg "pub fn" src/ -t rust
+else
+    skip_test  "rtk rg with file type"         "rg not installed"
+fi
 
 section "Grep (extra args passthrough)"
 
@@ -305,7 +314,7 @@ assert_ok      "rtk env --filter PATH"        rtk env --filter PATH
 section "Log"
 
 TMPLOG=$(mktemp /tmp/rtk-log-XXXXX.log)
-for i in $(seq 1 20); do
+for _ in $(seq 1 20); do
     echo "[2025-01-01 12:00:00] INFO: repeated message" >> "$TMPLOG"
 done
 echo "[2025-01-01 12:00:01] ERROR: something failed" >> "$TMPLOG"
@@ -529,7 +538,7 @@ section "Diff"
 
 assert_ok       "rtk diff identical files"     rtk diff Cargo.toml Cargo.toml
 assert_fails    "rtk diff differing files"     rtk diff Cargo.toml LICENSE
-assert_contains "rtk diff shows changes"       "added" rtk diff Cargo.toml LICENSE
+assert_contains "rtk diff shows classic changes" "^< " bash -c 'rtk diff "$1" "$2"; [[ $? -eq 1 ]]' _ Cargo.toml LICENSE
 
 # ── 37. Wc ────────────────────────────────────────────
 
