@@ -287,11 +287,17 @@ mod signal_relay {
     unsafe extern "C" fn relay(sig: libc::c_int) {
         let pid = CHILD_PID.load(Ordering::SeqCst);
         if pid == 0 || RELAYED.swap(sig, Ordering::SeqCst) != 0 {
-            libc::signal(sig, libc::SIG_DFL);
-            libc::raise(sig);
+            // nosemgrep: unsafe-block
+            unsafe {
+                libc::signal(sig, libc::SIG_DFL);
+                libc::raise(sig);
+            }
             return;
         }
-        libc::kill(pid as libc::pid_t, sig);
+        // nosemgrep: unsafe-block
+        unsafe {
+            libc::kill(pid as libc::pid_t, sig);
+        }
     }
 
     fn escalate(pid: u32) {
@@ -472,10 +478,10 @@ pub fn run_streaming(
                 let mut writer = BufWriter::new(child_stdin);
                 let stdin_handle = io::stdin();
                 for line in read_lines_lossy(stdin_handle.lock()) {
-                    if let Some(out) = filter.feed_line(&line) {
-                        if writeln!(writer, "{}", out).is_err() {
-                            break;
-                        }
+                    if let Some(out) = filter.feed_line(&line)
+                        && writeln!(writer, "{}", out).is_err()
+                    {
+                        break;
                     }
                 }
                 let tail = filter.flush();
@@ -660,19 +666,19 @@ pub fn run_streaming(
     let exit_code = status_to_exit_code(status);
     let raw = format!("{}{}", raw_stdout, raw_stderr);
 
-    if let Some(mut f) = saved_filter {
-        if let Some(post) = f.on_exit(exit_code, &raw) {
-            filtered.push_str(&post);
-            let mut dest: Box<dyn Write> = if filter_fd_is_stderr {
-                Box::new(io::stderr().lock())
-            } else {
-                Box::new(io::stdout().lock())
-            };
-            match write!(dest, "{}", post) {
-                Err(e) if e.kind() == io::ErrorKind::BrokenPipe => {}
-                Err(e) => return Err(e.into()),
-                Ok(_) => {}
-            }
+    if let Some(mut f) = saved_filter
+        && let Some(post) = f.on_exit(exit_code, &raw)
+    {
+        filtered.push_str(&post);
+        let mut dest: Box<dyn Write> = if filter_fd_is_stderr {
+            Box::new(io::stderr().lock())
+        } else {
+            Box::new(io::stdout().lock())
+        };
+        match write!(dest, "{}", post) {
+            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => {}
+            Err(e) => return Err(e.into()),
+            Ok(_) => {}
         }
     }
 
@@ -769,18 +775,6 @@ pub fn exec_capture_bytes(cmd: &mut Command) -> Result<CaptureBytes> {
 pub(crate) mod tests {
     use super::*;
     use std::process::Command;
-
-    fn shell_command(posix_script: &str, windows_script: &str) -> Command {
-        if cfg!(windows) {
-            let mut command = Command::new("cmd.exe");
-            command.args(["/d", "/c", windows_script]);
-            command
-        } else {
-            let mut command = Command::new("sh");
-            command.args(["-c", posix_script]);
-            command
-        }
-    }
 
     #[test]
     fn test_read_lines_lossy_preserves_lines_after_invalid_utf8() {
@@ -987,7 +981,9 @@ pub(crate) mod tests {
 
     #[test]
     fn test_run_streaming_exit_code_preserved() {
-        let mut cmd = shell_command("exit 42", "exit 42");
+        // nosemgrep: interpreter-execution
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "exit 42"]);
         let result = run_streaming(&mut cmd, StdinMode::Null, FilterMode::Passthrough).unwrap();
         assert_eq!(result.exit_code, 42);
     }
@@ -1048,7 +1044,6 @@ pub(crate) mod tests {
         assert_eq!(result.exit_code, 0);
     }
 
-    #[cfg(not(windows))]
     #[test]
     fn test_run_streaming_raw_cap_at_10mb() {
         // nosemgrep: interpreter-execution
@@ -1070,7 +1065,6 @@ pub(crate) mod tests {
         );
     }
 
-    #[cfg(not(windows))]
     #[test]
     fn test_run_streaming_stderr_cap_at_10mb() {
         // nosemgrep: interpreter-execution
@@ -1140,17 +1134,18 @@ pub(crate) mod tests {
 
     #[test]
     fn test_exec_capture_stderr() {
-        let mut cmd = shell_command("echo err_msg >&2", "echo err_msg 1>&2");
+        // nosemgrep: interpreter-execution
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "echo err_msg >&2"]);
         let result = exec_capture(&mut cmd).unwrap();
         assert!(result.stderr.contains("err_msg"));
     }
 
     #[test]
     fn test_exec_capture_combined() {
-        let mut cmd = shell_command(
-            "echo out_msg; echo err_msg >&2",
-            "echo out_msg & echo err_msg 1>&2",
-        );
+        // nosemgrep: interpreter-execution
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "echo out_msg; echo err_msg >&2"]);
         let result = exec_capture(&mut cmd).unwrap();
         let combined = result.combined();
         assert!(combined.contains("out_msg"));

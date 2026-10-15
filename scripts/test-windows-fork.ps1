@@ -42,6 +42,9 @@ function Invoke-FixtureCommand {
 }
 
 try {
+    $configDir = Join-Path $fixture 'config'
+    [IO.Directory]::CreateDirectory($configDir) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $configDir 'config.toml'), "[hooks]`nsuppress_hook_warning = true`n")
     [IO.File]::WriteAllText((Join-Path $fixture 'pytest.cmd'), "@echo off`r`necho 3 passed in 0.10s`r`necho RTK_WINDOWS_STDERR_MARKER 1>&2`r`nexit /b 0`r`n")
     $result = Invoke-FixtureCommand -Arguments @('pytest', 'fixture')
     if ($result.Code -ne 0 -or $result.Stderr.Trim() -cne 'RTK_WINDOWS_STDERR_MARKER' -or $result.Stdout -notmatch '3.*passed') {

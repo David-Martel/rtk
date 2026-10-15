@@ -22,16 +22,16 @@
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
+
+mod common;
 
 const MARKER: &str = "RTK_TEST_MARKER_DEPRECATED_FIXTURE";
 
 /// Builds a throwaway `pytest` on PATH that exits 0 while writing to BOTH
 /// streams, then returns rtk's stdout+stderr combined.
 fn run_rtk_against_shim(tool: &str) -> (bool, String) {
-    let dir = std::env::temp_dir().join(format!("rtk_stderr_test_{}_{}", tool, std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).expect("create shim dir");
+    let fixture = tempfile::tempdir().expect("create shim dir");
+    let dir = fixture.path();
 
     let shim = dir.join(tool);
     fs::write(
@@ -47,14 +47,12 @@ fn run_rtk_against_shim(tool: &str) -> (bool, String) {
         std::env::var("PATH").unwrap_or_default()
     );
 
-    let out = Command::new(env!("CARGO_BIN_EXE_rtk"))
+    let out = common::rtk_command()
         .arg(tool)
         .env("PATH", path)
-        .current_dir(&dir)
+        .current_dir(dir)
         .output()
         .expect("run rtk against shim");
-
-    let _ = fs::remove_dir_all(&dir);
 
     let combined = format!(
         "{}{}",

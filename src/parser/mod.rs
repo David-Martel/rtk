@@ -11,7 +11,7 @@ pub mod formatter;
 pub mod types;
 
 pub use formatter::{FormatMode, TokenFormatter};
-pub use types::*;
+pub use types::{Dependency, DependencyState, TestFailure, TestResult};
 
 /// Parse result with degradation tier
 #[derive(Debug)]
