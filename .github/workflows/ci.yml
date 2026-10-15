@@ -157,6 +157,7 @@ jobs:
 
       - name: Cargo Audit (CVE check)
         run: |
+          set -o pipefail
           echo "## Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Dependency Vulnerabilities" >> $GITHUB_STEP_SUMMARY
