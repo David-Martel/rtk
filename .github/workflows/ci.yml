@@ -133,6 +133,8 @@ jobs:
     name: Security Scan
     needs: clippy
     runs-on: ubuntu-latest
+    env:
+      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -141,6 +143,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Prepare PR security diffs
+        run: |
+          git cat-file -e "${PR_BASE_SHA}^{commit}"
+          printf 'Security diff base: %s\n' "$PR_BASE_SHA"
+          git diff --name-only "$PR_BASE_SHA"...HEAD > security-changed-files.txt
+          git diff "$PR_BASE_SHA"...HEAD > security-changes.diff
+          git diff "$PR_BASE_SHA"...HEAD -- Cargo.toml > security-dependencies.diff
 
       - name: Install cargo-audit
         run: cargo install cargo-audit
@@ -164,7 +174,7 @@ jobs:
       - name: Critical files check
         run: |
           echo "### Critical Files Modified" >> $GITHUB_STEP_SUMMARY
-          CRITICAL=$(git diff --name-only origin/master...HEAD | grep -E "(runner|summary|tracking|init|pnpm_cmd|container)\.rs|Cargo\.toml|workflows/.*\.yml" || true)
+          CRITICAL=$(grep -E "(runner|summary|tracking|init|pnpm_cmd|container)\.rs|Cargo\.toml|workflows/.*\.yml" security-changed-files.txt || true)
           if [ -n "$CRITICAL" ]; then
             echo "**HIGH RISK**: The following critical files were modified:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -184,19 +194,19 @@ jobs:
       - name: Dangerous patterns scan
         run: |
           echo "### Dangerous Code Patterns" >> $GITHUB_STEP_SUMMARY
-          PATTERNS=$(git diff origin/master...HEAD | grep -E "Command::new\(\"sh\"|Command::new\(\"bash\"|\.env\(\"LD_PRELOAD|\.env\(\"PATH|reqwest::|std::net::|TcpStream|UdpSocket|unsafe \{|\.unwrap\(\) |panic!\(|todo!\(|unimplemented!\(" || true)
+          PATTERNS=$(grep -E "Command::new\(\"sh\"|Command::new\(\"bash\"|\.env\(\"LD_PRELOAD|\.env\(\"PATH|reqwest::|std::net::|TcpStream|UdpSocket|unsafe \{|\.unwrap\(\) |panic!\(|todo!\(|unimplemented!\(" security-changes.diff || true)
           if [ -n "$PATTERNS" ]; then
             echo "**Potentially dangerous patterns detected:**" >> $GITHUB_STEP_SUMMARY
             echo '```diff' >> $GITHUB_STEP_SUMMARY
-            echo "$PATTERNS" | head -30 >> $GITHUB_STEP_SUMMARY
+            echo "$PATTERNS" | sed -n '1,30p' >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Security Concerns:**" >> $GITHUB_STEP_SUMMARY
             echo "$PATTERNS" | grep -q "Command::new" && echo "- Shell command execution detected" >> $GITHUB_STEP_SUMMARY || true
-            echo "$PATTERNS" | grep -q "\.env\(\"" && echo "- Environment variable manipulation" >> $GITHUB_STEP_SUMMARY || true
+            echo "$PATTERNS" | grep -Fq '.env("' && echo "- Environment variable manipulation" >> $GITHUB_STEP_SUMMARY || true
             echo "$PATTERNS" | grep -q "reqwest::\|std::net::\|TcpStream\|UdpSocket" && echo "- Network operations added" >> $GITHUB_STEP_SUMMARY || true
             echo "$PATTERNS" | grep -q "unsafe" && echo "- Unsafe code blocks" >> $GITHUB_STEP_SUMMARY || true
-            echo "$PATTERNS" | grep -q "\.unwrap\(\)\|panic!\(" && echo "- Panic-inducing code" >> $GITHUB_STEP_SUMMARY || true
+            echo "$PATTERNS" | grep -Fq -e '.unwrap()' -e 'panic!(' && echo "- Panic-inducing code" >> $GITHUB_STEP_SUMMARY || true
             echo "::warning::Dangerous code patterns detected - manual review required"
           else
             echo "No dangerous patterns detected" >> $GITHUB_STEP_SUMMARY
@@ -206,7 +216,7 @@ jobs:
       - name: New dependencies check
         run: |
           echo "### Dependencies Changes" >> $GITHUB_STEP_SUMMARY
-          if git diff origin/master...HEAD Cargo.toml | grep -E "^\+.*=" | grep -v "^\+\+\+" > new_deps.txt; then
+          if grep -E "^\+.*=" security-dependencies.diff | grep -Ev '^\+\+\+' > new_deps.txt; then
             echo "**New dependencies added:**" >> $GITHUB_STEP_SUMMARY
             echo '```toml' >> $GITHUB_STEP_SUMMARY
             cat new_deps.txt >> $GITHUB_STEP_SUMMARY
@@ -228,7 +238,7 @@ jobs:
           if cargo clippy --workspace --all-targets -- -W clippy::unwrap_used -W clippy::panic -W clippy::expect_used 2>&1 | tee clippy.log | grep -E "warning:|error:"; then
             echo "Security-related lints triggered:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -E "warning:|error:" clippy.log | head -20 >> $GITHUB_STEP_SUMMARY
+            grep -E "warning:|error:" clippy.log | sed -n '1,20p' >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "::warning::Clippy security lints failed"
           else
