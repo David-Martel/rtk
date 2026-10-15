@@ -3,7 +3,6 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-const AUDIT_DIR_ENV: &str = "RTK_AUDIT_DIR";
 const AUDIT_LOG_FILE: &str = "hook-audit.log";
 
 fn audit_dir_from(
@@ -25,8 +24,8 @@ fn audit_dir_from(
 /// Returns the configured hook audit log path.
 pub(crate) fn path() -> PathBuf {
     audit_dir_from(
-        std::env::var_os(AUDIT_DIR_ENV),
-        dirs::home_dir(),
+        crate::core::user_dirs::env_path("RTK_AUDIT_DIR"),
+        crate::core::user_dirs::home(),
         std::env::temp_dir(),
     )
     .join(AUDIT_LOG_FILE)
@@ -35,6 +34,14 @@ pub(crate) fn path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn audit_override_uses_isolated_environment() {
+        let dir = crate::core::test_isolation::root().join("audit-override");
+        crate::core::user_env::with_path("RTK_AUDIT_DIR", Some(&dir), || {
+            assert_eq!(path(), dir.join(AUDIT_LOG_FILE));
+        });
+    }
 
     #[test]
     fn override_directory_wins() {
