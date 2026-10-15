@@ -25,6 +25,7 @@ fn run_antigravity_payload(payload: &str, home: &Path, audit: bool) -> Output {
     let mut child = common::rtk_command()
         .args(["hook", "antigravity"])
         .env("HOME", home)
+        .env("RTK_AUDIT_DIR", home.join(".local/share/rtk"))
         .env("RTK_HOOK_AUDIT", if audit { "1" } else { "0" })
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
