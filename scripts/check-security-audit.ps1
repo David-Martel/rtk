@@ -20,7 +20,7 @@ function Assert-SecurityAudit {
     param([hashtable] $Audit, [hashtable] $Metadata, [int] $AuditExit)
     $v = $Audit.vulnerabilities
     if ($v -isnot [hashtable] -or $v.list -isnot [array] -or
-        $v.found -isnot [bool] -or $v.count -isnot [long] -and $v.count -isnot [int] -or
+        $v.found -isnot [bool] -or ($v.count -isnot [long] -and $v.count -isnot [int]) -or
         $v.count -ne $v.list.Count -or $v.found -ne ($v.list.Count -gt 0)) {
         throw 'Malformed or inconsistent cargo-audit vulnerability result'
     }
@@ -37,7 +37,8 @@ function Assert-SecurityAudit {
             $finding.package.checksum -cne '521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9') {
             throw "Unadmitted vulnerability: $($finding.advisory.id) $($finding.package.name) $($finding.package.version)"
         }
-        if ($Metadata.version -ne 1 -or $Metadata.packages -isnot [array] -or
+        if (($Metadata.version -isnot [int] -and $Metadata.version -isnot [long]) -or
+            $Metadata.version -ne 1 -or $Metadata.packages -isnot [array] -or
             $Metadata.resolve.nodes -isnot [array]) { throw 'Missing resolved Cargo metadata' }
         $shim = @($Metadata.packages | Where-Object {
             $_.name -ceq 'webpki-roots' -and $_.version -ceq '0.26.11' -and $_.source -ceq $Registry
@@ -155,10 +156,13 @@ pub use parent::TLS_SERVER_ROOTS;
         @{ name = 'foreign-parent'; pass = $false; mutate = { param($f) $f.metadata.packages[1].source = 'git+https://example.invalid/roots' } },
         @{ name = 'unresolved-parent'; pass = $false; mutate = { param($f) $f.metadata.resolve.nodes[0].deps[0].pkg = 'absent' } },
         @{ name = 'wrong-parent-alias'; pass = $false; mutate = { param($f) $f.metadata.resolve.nodes[0].deps[0].name = 'other' } },
+        @{ name = 'boolean-metadata-version'; pass = $false; mutate = { param($f) $f.metadata.version = $true } },
+        @{ name = 'string-metadata-version'; pass = $false; mutate = { param($f) $f.metadata.version = '1' } },
         @{ name = 'changed-source'; pass = $false; mutate = { param($f) [IO.File]::AppendAllText($lib, '// changed') } },
         @{ name = 'different-advisory'; pass = $false; mutate = { param($f) $f.audit.vulnerabilities.list[0].advisory.id = 'RUSTSEC-2026-0382' } },
         @{ name = 'different-shim-version'; pass = $false; mutate = { param($f) $f.audit.vulnerabilities.list[0].package.version = '0.26.10' } },
         @{ name = 'mismatched-count'; pass = $false; mutate = { param($f) $f.audit.vulnerabilities.count = 0 } },
+        @{ name = 'null-list-zero-count'; pass = $false; mutate = { param($f) $f.audit.vulnerabilities = @{ found = $false; count = [int] 0; list = $null }; $f.exit = 0 } },
         @{ name = 'operational-failure'; pass = $false; mutate = { param($f) $f.exit = 2 } },
         @{ name = 'no-vulnerabilities'; pass = $true; mutate = { param($f) $f.audit.vulnerabilities = @{ found = $false; count = 0; list = @() }; $f.exit = 0 } }
     )

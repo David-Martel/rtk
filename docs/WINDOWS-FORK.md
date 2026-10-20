@@ -97,7 +97,7 @@ This is a conditional source proof, with no global advisory ignore. See the
 
 Recorded source review (2026-10-20): the independent shared-hooks Codex lane
 reviewed the XML event migration and isolated reminder-fixture changes; root
-reviewed the new audit gate and replayed all 12 controls and actual audit/metadata.
+reviewed the new audit gate and replayed all 15 controls and actual audit/metadata.
 The complete Windows no-default-feature suite passed 4231 tests with 8 existing
 skips, including both new XML regressions. Strict Clippy and release qualification
 are separate gates and must pass before deploying the successor.
@@ -108,4 +108,4 @@ are separate gates and must pass before deploying the successor.
 | `test_trx_diagnostic_references_preserve_original_text`: escaped diagnostics, decoded attribute references and literal attribute newline | `E76155EF41FF5682EE461DAF616750983BA45BBA3AACA532390325104498D08C` (`dotnet_trx.rs`) |
 | `diff_byte_accuracy_test`: exact payload/error assertions retained; private reminder suppression | `021E41484241AA3704485D98FEC83A0439C715DA99837A3B797D3537207DDB2F` |
 | `guard_integration_test`: guard/exit assertions retained; private reminder suppression | `97FD66FC02F9E2D496DB9CF6D7E83FD727D6DE86064E8534ACE9BF0D0A76E73E` |
-| Audit `-SelfTest` 12 selectors and actual fail-closed gate, independently replayed | `018554B489F08DE144CD7F29EE36431F3BBE72CA1ECBCA53B1CF4C358DDDA26B` |
+| Audit `-SelfTest` 15 selectors and actual fail-closed gate, independently replayed | `8DD49FE76F32AE1EDC4E4D9A4B6F4E5B085BE5C3BBE37C99D864FFB818C3E49D` |
