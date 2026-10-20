@@ -72,5 +72,40 @@ pwsh -NoProfile -File scripts/test-windows-fork.ps1 -RtkPath target/debug/rtk.ex
 ```
 
 A source sync or successful check is not deployment acceptance. Preserve prior
-executables and record source commit and hashes before installing a qualified
-build. Validate client fidelity against the actual installed binary separately.
+executable identity and record source commit and hashes before installing a
+qualified build. Keep mapped images and unique work; remove superseded redundant
+executables after replacement acceptance. Do not create backup copies by default.
+Validate client fidelity against the actual installed binary separately.
+
+## Security dependency refresh
+
+The stable CLI retains ureq2 while updating rustls to 0.23.46,
+rustls-webpki to 0.103.16, the trust-store parent to 1.0.10, crossbeam-epoch
+to 0.9.20 and quick-xml to 0.41. The XML migration reconstructs contiguous
+text/reference events before testing an MTP boolean or retaining escaped TRX
+diagnostic text. Attribute values use the supported XML 1.0 normalization API.
+No untrusted XML resolver or network access is enabled.
+
+The security CI step now runs [check-security-audit.ps1](../scripts/check-security-audit.ps1)
+and its positive/negative controls. Any vulnerability fails except the precise
+webpki-roots 0.26.11 compatibility shim for RUSTSEC-2026-0381, and only after
+proving its registry/checksum identity, exact reexport source and resolved registry
+parent>=1.0.10. Changed source, an old/foreign/unresolved parent or another
+advisory fails. Cargo.lock must retain the same hash through audit and metadata.
+This is a conditional source proof, with no global advisory ignore. See the
+[RustSec advisory](https://rustsec.org/advisories/RUSTSEC-2026-0381.html).
+
+Recorded source review (2026-10-20): the independent shared-hooks Codex lane
+reviewed the XML event migration and isolated reminder-fixture changes; root
+reviewed the new audit gate and replayed all 12 controls and actual audit/metadata.
+The complete Windows no-default-feature suite passed 4231 tests with 8 existing
+skips, including both new XML regressions. Strict Clippy and release qualification
+are separate gates and must pass before deploying the successor.
+
+| Selector / reviewed behavior | Source SHA256 |
+|---|---|
+| `test_mtp_property_entities_preserve_boolean_semantics`: numeric entity true; compound, spaced, unknown and comment-split false controls | `1A2B071FFE880E530F455B93A20AE2FD100143B4BCEAE62CDA4CD2C1D84EC12A` (`dotnet_cmd.rs`) |
+| `test_trx_diagnostic_references_preserve_original_text`: escaped diagnostics, decoded attribute references and literal attribute newline | `E76155EF41FF5682EE461DAF616750983BA45BBA3AACA532390325104498D08C` (`dotnet_trx.rs`) |
+| `diff_byte_accuracy_test`: exact payload/error assertions retained; private reminder suppression | `021E41484241AA3704485D98FEC83A0439C715DA99837A3B797D3537207DDB2F` |
+| `guard_integration_test`: guard/exit assertions retained; private reminder suppression | `97FD66FC02F9E2D496DB9CF6D7E83FD727D6DE86064E8534ACE9BF0D0A76E73E` |
+| Audit `-SelfTest` 12 selectors and actual fail-closed gate, independently replayed | `018554B489F08DE144CD7F29EE36431F3BBE72CA1ECBCA53B1CF4C358DDDA26B` |

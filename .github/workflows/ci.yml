@@ -156,21 +156,12 @@ jobs:
         run: cargo install cargo-audit
 
       - name: Cargo Audit (CVE check)
+        shell: pwsh
         run: |
-          set -o pipefail
-          echo "## Security Scan Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Dependency Vulnerabilities" >> $GITHUB_STEP_SUMMARY
-          if cargo audit 2>&1 | tee audit.log; then
-            echo "No known vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "Vulnerabilities found:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat audit.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "::warning::Dependency vulnerabilities detected - review required"
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
+          & ./scripts/check-security-audit.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency audit gate controls failed' }
+          & ./scripts/check-security-audit.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency vulnerabilities or invalid audit proof' }
 
       - name: Critical files check
         run: |

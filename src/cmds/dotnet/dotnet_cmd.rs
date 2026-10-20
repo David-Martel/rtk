@@ -614,18 +614,26 @@ fn scan_mtp_kind_in_file(path: &Path) -> MtpProjectKind {
         Ok(c) => c,
         Err(_) => return MtpProjectKind::None,
     };
-
     let mut reader = Reader::from_str(&content);
-    reader.config_mut().trim_text(true);
+    // Entity references are separate events; trimming each fragment changes values.
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
     let mut inside_mtp_element = false;
-
+    let mut text_run = String::new();
     loop {
-        match reader.read_event_into(&mut buf) {
+        let event = reader.read_event_into(&mut buf);
+        if inside_mtp_element && !matches!(&event, Ok(Event::Text(_) | Event::GeneralRef(_))) {
+            if let Ok(text) = quick_xml::escape::unescape(&text_run)
+                && text.trim().eq_ignore_ascii_case("true")
+            {
+                return MtpProjectKind::VsTestBridge;
+            }
+            text_run.clear();
+        }
+        match event {
             Ok(Event::Start(e)) => {
                 let name_lower = e.local_name().as_ref().to_ascii_lowercase();
-                // All project-file MTP properties run in VSTest bridge mode and require
-                // MTP-specific args to come after `--`. Only global.json MTP mode is native.
+                // Project properties use bridge mode; only global.json selects native MTP.
                 inside_mtp_element = matches!(
                     name_lower.as_slice(),
                     b"usemicrosofttestingplatformrunner"
@@ -634,11 +642,14 @@ fn scan_mtp_kind_in_file(path: &Path) -> MtpProjectKind {
                 );
             }
             Ok(Event::Text(e)) if inside_mtp_element => {
-                if let Ok(text) = e.unescape()
-                    && text.trim().eq_ignore_ascii_case("true")
-                {
-                    return MtpProjectKind::VsTestBridge;
+                if let Ok(text) = e.decode() {
+                    text_run.push_str(&text);
                 }
+            }
+            Ok(Event::GeneralRef(e)) if inside_mtp_element => {
+                text_run.push('&');
+                text_run.push_str(&String::from_utf8_lossy(e.as_ref()));
+                text_run.push(';');
             }
             Ok(Event::End(_)) => inside_mtp_element = false,
             Ok(Event::Eof) => break,
@@ -647,7 +658,6 @@ fn scan_mtp_kind_in_file(path: &Path) -> MtpProjectKind {
         }
         buf.clear();
     }
-
     MtpProjectKind::None
 }
 
@@ -2847,6 +2857,28 @@ mod tests {
         .expect("write Directory.Build.props");
 
         assert_eq!(scan_mtp_kind_in_file(&props), MtpProjectKind::VsTestBridge);
+    }
+
+    /// Protects: MSBuild boolean semantics across split XML references.
+    /// Detects: lost numeric references, trimmed internal spaces, and prefix acceptance.
+    /// Needs: private project files, no dotnet process or network.
+    /// Breadcrumb: scan_mtp_kind_in_file text/reference run handling.
+    #[test]
+    fn test_mtp_property_entities_preserve_boolean_semantics() {
+        let temp_dir = test_isolation::tempdir();
+        let path = temp_dir.path().join("Tests.csproj");
+        for (value, expected) in [
+            ("tr&#117;e", MtpProjectKind::VsTestBridge),
+            ("  Tr&#x55;e  ", MtpProjectKind::VsTestBridge),
+            ("true&amp;false", MtpProjectKind::None),
+            ("tr &#117;e", MtpProjectKind::None),
+            ("tr&unknown;e", MtpProjectKind::None),
+            ("tr<!-- split -->ue", MtpProjectKind::None),
+        ] {
+            fs::write(&path, format!("<Project><UseTestingPlatformRunner>{value}</UseTestingPlatformRunner></Project>"))
+                .expect("write private project");
+            assert_eq!(scan_mtp_kind_in_file(&path), expected, "value: {value}");
+        }
     }
 
     #[test]
