@@ -20,8 +20,10 @@ fn run_rtk_diff(file1: &Path, file2: &Path) -> Output {
     let file1 = file1.display().to_string();
     let file2 = file2.display().to_string();
 
-    common::rtk_command()
-        .args([DIFF_SUBCOMMAND, &file1, &file2])
+    let mut cmd = common::rtk_command();
+    // Compare diff diagnostics without the unrelated installation reminder.
+    common::suppress_hook_reminder(&mut cmd);
+    cmd.args([DIFF_SUBCOMMAND, &file1, &file2])
         .output()
         .expect("run rtk diff")
 }

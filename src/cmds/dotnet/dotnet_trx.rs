@@ -21,7 +21,9 @@ fn extract_attr_value(
             continue;
         }
 
-        if let Ok(value) = attr.decode_and_unescape_value(reader.decoder()) {
+        if let Ok(value) =
+            attr.decoded_and_normalized_value(quick_xml::XmlVersion::Implicit1_0, reader.decoder())
+        {
             return Some(value.into_owned());
         }
     }
@@ -212,8 +214,10 @@ fn parse_trx_content(content: &str) -> Option<TestSummary> {
     }
 
     let mut reader = Reader::from_str(content);
-    reader.config_mut().trim_text(true);
+    // Preserve spaces around split references; trim complete text runs below.
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
+    let mut text_run = String::new();
     let mut summary = TestSummary::default();
     let mut saw_test_run = false;
     let mut in_failed_result = false;
@@ -224,7 +228,18 @@ fn parse_trx_content(content: &str) -> Option<TestSummary> {
     let mut capture_field: Option<CaptureField> = None;
 
     loop {
-        match reader.read_event_into(&mut buf) {
+        let event = reader.read_event_into(&mut buf);
+        if !matches!(&event, Ok(Event::Text(_) | Event::GeneralRef(_))) {
+            if in_failed_result {
+                match capture_field {
+                    Some(CaptureField::Message) => message_buf.push_str(text_run.trim()),
+                    Some(CaptureField::StackTrace) => stack_buf.push_str(text_run.trim()),
+                    None => {}
+                }
+            }
+            text_run.clear();
+        }
+        match event {
             Ok(Event::Start(e)) => match local_name(e.name().as_ref()) {
                 b"TestRun" => saw_test_run = true,
                 b"Times" => {
@@ -299,12 +314,13 @@ fn parse_trx_content(content: &str) -> Option<TestSummary> {
                     continue;
                 }
 
-                let text = String::from_utf8_lossy(e.as_ref());
-                match capture_field {
-                    Some(CaptureField::Message) => message_buf.push_str(&text),
-                    Some(CaptureField::StackTrace) => stack_buf.push_str(&text),
-                    None => {}
-                }
+                text_run.push_str(&String::from_utf8_lossy(e.as_ref()));
+            }
+            Ok(Event::GeneralRef(e)) if in_failed_result => {
+                // Retain the original escaped diagnostics rather than dropping references.
+                text_run.push('&');
+                text_run.push_str(&String::from_utf8_lossy(e.as_ref()));
+                text_run.push(';');
             }
             Ok(Event::CData(e)) => {
                 if !in_failed_result {
@@ -441,6 +457,27 @@ mod tests {
             "MyTests.Calculator.Add_ShouldFail"
         );
         assert!(summary.failed_tests[0].details[0].contains("Expected: 5, Actual: 4"));
+    }
+
+    /// Protects: original escaped diagnostic text and spaces across XML event splits.
+    /// Detects: discarded references, altered spaces, or undecoded XML attributes.
+    /// Needs: one inert TRX string, no files, dotnet, credentials or network.
+    /// Breadcrumb: src/cmds/dotnet/dotnet_cmd.rs (run_test consumes parsed TRX diagnostics).
+    #[test]
+    fn test_trx_diagnostic_references_preserve_original_text() {
+        let trx = r#"<TestRun><Results><UnitTestResult testName="Failure &amp; &#x41;
+normalized" outcome="Failed">
+<Output><ErrorInfo><Message> Expected &lt;item&gt; &amp; &#x41;. </Message>
+<StackTrace>line &lt;42&gt;</StackTrace></ErrorInfo></Output></UnitTestResult>
+</Results><ResultSummary><Counters total="1" executed="1" passed="0" failed="1" /></ResultSummary></TestRun>"#;
+        let summary = parse_trx_content(trx).expect("valid private TRX");
+        assert_eq!(summary.failed_tests.len(), 1);
+        assert_eq!(summary.failed_tests[0].name, "Failure & A normalized");
+        assert_eq!(
+            summary.failed_tests[0].details[0],
+            "Expected &lt;item&gt; &amp; &#x41;."
+        );
+        assert_eq!(summary.failed_tests[0].details[1], "line &lt;42&gt;");
     }
 
     #[test]

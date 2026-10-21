@@ -60,7 +60,10 @@ fn guard_does_not_block_real_compression() {
 }
 
 fn rtk_output_in_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, Option<i32>) {
-    let out = common::rtk_command()
+    let mut cmd = common::rtk_command();
+    // Keep exact stderr checks focused on command diagnostics and cap notices.
+    common::suppress_hook_reminder(&mut cmd);
+    let out = cmd
         .env("LC_ALL", "C")
         .args(args)
         .current_dir(dir)

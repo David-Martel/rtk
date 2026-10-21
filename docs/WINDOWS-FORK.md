@@ -72,5 +72,68 @@ pwsh -NoProfile -File scripts/test-windows-fork.ps1 -RtkPath target/debug/rtk.ex
 ```
 
 A source sync or successful check is not deployment acceptance. Preserve prior
-executables and record source commit and hashes before installing a qualified
-build. Validate client fidelity against the actual installed binary separately.
+executable identity and record source commit and hashes before installing a
+qualified build. Keep mapped images and unique work; remove superseded redundant
+executables after replacement acceptance. Do not create backup copies by default.
+Validate client fidelity against the actual installed binary separately.
+
+## Security dependency refresh
+
+The stable CLI retains ureq2 while updating rustls to 0.23.46,
+rustls-webpki to 0.103.16, the trust-store parent to 1.0.10, crossbeam-epoch
+to 0.9.20 and quick-xml to 0.41. The XML migration reconstructs contiguous
+text/reference events before testing an MTP boolean or retaining escaped TRX
+diagnostic text. Attribute values use the supported XML 1.0 normalization API.
+No untrusted XML resolver or network access is enabled.
+
+The security CI step now runs [check-security-audit.ps1](../scripts/check-security-audit.ps1)
+and its positive/negative controls. Any vulnerability fails except the precise
+webpki-roots 0.26.11 compatibility shim for RUSTSEC-2026-0381, and only after
+proving its registry/checksum identity, exact reexport source and resolved registry
+parent>=1.0.10. Changed source, an old/foreign/unresolved parent or another
+advisory fails. Cargo.lock must retain the same hash through audit and metadata.
+This is a conditional source proof, with no global advisory ignore. See the
+[RustSec advisory](https://rustsec.org/advisories/RUSTSEC-2026-0381.html).
+
+Recorded source review (2026-10-20): the independent shared-hooks Codex lane
+reviewed the XML event migration and isolated reminder-fixture changes; root
+reviewed the new audit gate and replayed all 15 controls and actual audit/metadata.
+The complete Windows no-default-feature suite passed 4231 tests with 8 existing
+skips, including both new XML regressions. Strict all-target Clippy passed with warnings denied. The optimized release and
+its complete 4231-test post-build suite passed; all four real Windows output/exit
+controls passed against artifact
+`BEE59BDB84008A064198AEB955B0C7DCA3039A21C53E9D0118D3EA0DFA259F12`.
+Deployment still requires current-head CI and independent review.
+
+| Selector / reviewed behavior | Source SHA256 |
+|---|---|
+| `test_mtp_property_entities_preserve_boolean_semantics`: numeric entity true; compound, spaced, unknown and comment-split false controls | `BDE2ECD9B3B14F28141B3360FCACF831AA511FF39EA1CD53283B5F34BF9B8F7E` (`dotnet_cmd.rs`) |
+| `test_trx_diagnostic_references_preserve_original_text`: escaped diagnostics, decoded attribute references and literal attribute newline | `D102E277627DA5800849A407DC9B784F6DB60195A8610C950E646EDABF608ED2` (`dotnet_trx.rs`) |
+| `diff_byte_accuracy_test`: exact payload/error assertions retained; private reminder suppression | `021E41484241AA3704485D98FEC83A0439C715DA99837A3B797D3537207DDB2F` |
+| `guard_integration_test`: guard/exit assertions retained; private reminder suppression | `97FD66FC02F9E2D496DB9CF6D7E83FD727D6DE86064E8534ACE9BF0D0A76E73E` |
+| Audit `-SelfTest` 15 selectors and actual fail-closed gate, independently replayed | `8DD49FE76F32AE1EDC4E4D9A4B6F4E5B085BE5C3BBE37C99D864FFB818C3E49D` |
+
+The fork's repository Actions setting was disabled, so an open PR had no CI.
+CI and PR Target Branch Check are now enabled. Unrelated release, CD, stale and
+transparency workflows remain disabled; no release publication was requested.
+Local source syncs use `git fetch --no-prune-tags` and repo-local
+`fetch.pruneTags=false` to retain authoritative upstream tags that origin does
+not carry. Restored upstream tag identities were checked against that remote.
+
+The rationale checker resolves breadcrumbs from the repository root and rejects
+references to the selector's own file. The two XML selectors link to their command
+dispatch or consuming module; this comment-only correction preserves assertions
+and production behavior. When putting Git's POSIX tools on PATH for Windows tests,
+pin the MSVC-compatible linker explicitly: Git's `usr/bin/link.exe` is a different
+program and must not receive Rust's MSVC link arguments.
+
+The complete 4231-test runs, release artifact and independent review above apply
+to `dff1e7d684753fd8265b41b24830f6e02901069b`. At that revision the XML source hashes
+were `1A2B071FFE880E530F455B93A20AE2FD100143B4BCEAE62CDA4CD2C1D84EC12A`
+(`dotnet_cmd.rs`) and
+`E76155EF41FF5682EE461DAF616750983BA45BBA3AACA532390325104498D08C`
+(`dotnet_trx.rs`). The table records their current comment-only successor bytes.
+Both XML selectors were recompiled and passed individually on those current
+bytes with the explicit MSVC-compatible `lld-link.exe`; the shared rationale
+checker also passed both changed selectors. This focused replay does not relabel
+the earlier complete suite or release artifact as a build of the successor.
