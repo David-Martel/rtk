@@ -2862,7 +2862,7 @@ mod tests {
     /// Protects: MSBuild boolean semantics across split XML references.
     /// Detects: lost numeric references, trimmed internal spaces, and prefix acceptance.
     /// Needs: private project files, no dotnet process or network.
-    /// Breadcrumb: scan_mtp_kind_in_file text/reference run handling.
+    /// Breadcrumb: src/lib.rs (DotnetCommands::Test dispatches the MTP-aware command).
     #[test]
     fn test_mtp_property_entities_preserve_boolean_semantics() {
         let temp_dir = test_isolation::tempdir();

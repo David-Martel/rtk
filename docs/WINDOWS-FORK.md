@@ -107,8 +107,8 @@ Deployment still requires current-head CI and independent review.
 
 | Selector / reviewed behavior | Source SHA256 |
 |---|---|
-| `test_mtp_property_entities_preserve_boolean_semantics`: numeric entity true; compound, spaced, unknown and comment-split false controls | `1A2B071FFE880E530F455B93A20AE2FD100143B4BCEAE62CDA4CD2C1D84EC12A` (`dotnet_cmd.rs`) |
-| `test_trx_diagnostic_references_preserve_original_text`: escaped diagnostics, decoded attribute references and literal attribute newline | `E76155EF41FF5682EE461DAF616750983BA45BBA3AACA532390325104498D08C` (`dotnet_trx.rs`) |
+| `test_mtp_property_entities_preserve_boolean_semantics`: numeric entity true; compound, spaced, unknown and comment-split false controls | `BDE2ECD9B3B14F28141B3360FCACF831AA511FF39EA1CD53283B5F34BF9B8F7E` (`dotnet_cmd.rs`) |
+| `test_trx_diagnostic_references_preserve_original_text`: escaped diagnostics, decoded attribute references and literal attribute newline | `D102E277627DA5800849A407DC9B784F6DB60195A8610C950E646EDABF608ED2` (`dotnet_trx.rs`) |
 | `diff_byte_accuracy_test`: exact payload/error assertions retained; private reminder suppression | `021E41484241AA3704485D98FEC83A0439C715DA99837A3B797D3537207DDB2F` |
 | `guard_integration_test`: guard/exit assertions retained; private reminder suppression | `97FD66FC02F9E2D496DB9CF6D7E83FD727D6DE86064E8534ACE9BF0D0A76E73E` |
 | Audit `-SelfTest` 15 selectors and actual fail-closed gate, independently replayed | `8DD49FE76F32AE1EDC4E4D9A4B6F4E5B085BE5C3BBE37C99D864FFB818C3E49D` |
@@ -119,3 +119,10 @@ transparency workflows remain disabled; no release publication was requested.
 Local source syncs use `git fetch --no-prune-tags` and repo-local
 `fetch.pruneTags=false` to retain authoritative upstream tags that origin does
 not carry. Restored upstream tag identities were checked against that remote.
+
+The rationale checker resolves breadcrumbs from the repository root and rejects
+references to the selector's own file. The two XML selectors link to their command
+dispatch or consuming module; this comment-only correction preserves assertions
+and production behavior. When putting Git's POSIX tools on PATH for Windows tests,
+pin the MSVC-compatible linker explicitly: Git's `usr/bin/link.exe` is a different
+program and must not receive Rust's MSVC link arguments.

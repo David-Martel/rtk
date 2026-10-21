@@ -462,7 +462,7 @@ mod tests {
     /// Protects: original escaped diagnostic text and spaces across XML event splits.
     /// Detects: discarded references, altered spaces, or undecoded XML attributes.
     /// Needs: one inert TRX string, no files, dotnet, credentials or network.
-    /// Breadcrumb: parse_trx_content text/reference run accumulation.
+    /// Breadcrumb: src/cmds/dotnet/dotnet_cmd.rs (run_test consumes parsed TRX diagnostics).
     #[test]
     fn test_trx_diagnostic_references_preserve_original_text() {
         let trx = r#"<TestRun><Results><UnitTestResult testName="Failure &amp; &#x41;
