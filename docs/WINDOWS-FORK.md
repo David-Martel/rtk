@@ -126,3 +126,14 @@ dispatch or consuming module; this comment-only correction preserves assertions
 and production behavior. When putting Git's POSIX tools on PATH for Windows tests,
 pin the MSVC-compatible linker explicitly: Git's `usr/bin/link.exe` is a different
 program and must not receive Rust's MSVC link arguments.
+
+The complete 4231-test runs, release artifact and independent review above apply
+to `dff1e7d684753fd8265b41b24830f6e02901069b`. At that revision the XML source hashes
+were `1A2B071FFE880E530F455B93A20AE2FD100143B4BCEAE62CDA4CD2C1D84EC12A`
+(`dotnet_cmd.rs`) and
+`E76155EF41FF5682EE461DAF616750983BA45BBA3AACA532390325104498D08C`
+(`dotnet_trx.rs`). The table records their current comment-only successor bytes.
+Both XML selectors were recompiled and passed individually on those current
+bytes with the explicit MSVC-compatible `lld-link.exe`; the shared rationale
+checker also passed both changed selectors. This focused replay does not relabel
+the earlier complete suite or release artifact as a build of the successor.
